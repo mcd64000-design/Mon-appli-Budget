@@ -344,7 +344,7 @@
 
                 <button class="btn-block backup-btn" onclick="exportCSV()" style="margin-top:10px;">📤 Exporter les données (CSV)</button>
 
-                <input type="file" id="import-csv-input" accept=".csv" style="display:none;" onchange="importCSV(event)">
+                <input type="file" id="import-csv-input" accept=".csv,text/csv,text/comma-separated-values,application/csv,text/plain,*/*" style="display:none;" onchange="importCSV(event)">
                 <button class="btn-block backup-btn" onclick="document.getElementById('import-csv-input').click()" style="margin-top:10px;">📥 Importer des données (CSV)</button>
 
                 <button class="btn-block clear-btn" onclick="clearAllData()" style="margin-top:10px;">Réinitialiser TOUTES les données locales</button>
@@ -900,4 +900,4 @@
     window.addEventListener('DOMContentLoaded', startApp);
 </script>
 </body>
-    </html>
+</html>
