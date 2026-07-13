@@ -42,6 +42,7 @@
             position: fixed;
             width: 100%;
             height: 100%;
+            transition: background-color 0.25s ease, color 0.25s ease;
         }
 
         /* --- CONTENEUR SWIPER --- */
@@ -168,6 +169,44 @@
         .modal .months-list { max-height: 200px; overflow-y: auto; margin: 15px 0; text-align: left; border: 1px solid #eee; padding: 10px; border-radius: 8px; }
         .modal-buttons { display: flex; gap: 10px; margin-top: 15px; }
         .btn-secondary { background: #95a5a6; }
+
+        /* --- RÉGLAGE : INTERRUPTEUR MODE SOMBRE --- */
+        .settings-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .settings-row span { font-weight: 600; font-size: 0.95rem; }
+        .switch { position: relative; display: inline-block; width: 46px; height: 26px; flex-shrink: 0; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .3s; border-radius: 26px; }
+        .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 3px; bottom: 3px; background-color: white; transition: .3s; border-radius: 50%; }
+        .switch input:checked + .slider { background-color: var(--accent); }
+        .switch input:checked + .slider:before { transform: translateX(20px); }
+
+        /* --- MODE SOMBRE --- */
+        body.dark-mode { background-color: #10161f; color: #ecf0f1; }
+        body.dark-mode header,
+        body.dark-mode .card,
+        body.dark-mode .modal-content { background: #1c2431; color: #ecf0f1; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        body.dark-mode h1, body.dark-mode h3 { color: #ecf0f1; }
+        body.dark-mode .stat-box,
+        body.dark-mode .category-budget-panel,
+        body.dark-mode .checkbox-group,
+        body.dark-mode .list-sort { background: #263042; color: #ecf0f1; }
+        body.dark-mode .stat-box span { color: #9aa7b8; }
+        body.dark-mode .stat-box.alert,
+        body.dark-mode .dispatch-info.alert { background: #3a2020; color: #ff8a80; }
+        body.dark-mode .dispatch-info { background: #1f3542; color: #6ec6f1; }
+        body.dark-mode input[type="month"],
+        body.dark-mode select,
+        body.dark-mode input[type="text"],
+        body.dark-mode input[type="number"] { background: #263042; color: #ecf0f1; border-color: #3b4a5e; }
+        body.dark-mode .item { border-bottom-color: #2c3648; }
+        body.dark-mode .item-meta { color: #9aa7b8; }
+        body.dark-mode .tag { background: #1f3542; color: #6ec6f1; }
+        body.dark-mode .gauge-bar-bg { background: #2c3648; }
+        body.dark-mode .dot { background-color: #2c3648; }
+        body.dark-mode .dot.active { background-color: var(--accent); }
+        body.dark-mode .category-budget-toggle { color: #6ec6f1; }
+        body.dark-mode .modal { background: rgba(0,0,0,0.7); }
+        body.dark-mode .months-list { border-color: #2c3648; }
     </style>
 </head>
 <body>
@@ -292,8 +331,23 @@
             <!-- PARAMÈTRES ET SAUVEGARDES LOCALES -->
             <div class="card">
                 <h3>Paramètres & Sauvegardes</h3>
+
+                <div class="settings-row" style="margin-top:15px;">
+                    <span>🌙 Mode sombre</span>
+                    <label class="switch">
+                        <input type="checkbox" id="dark-mode-toggle" onchange="toggleDarkMode()">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+
                 <button class="btn-block backup-btn" onclick="openPdfModal()" style="margin-top:15px;">💾 Sauvegarde : Générer un Rapport PDF</button>
-                <button class="btn-block clear-btn" onclick="clearAllData()">Réinitialiser TOUTES les données locales</button>
+
+                <button class="btn-block backup-btn" onclick="exportCSV()" style="margin-top:10px;">📤 Exporter les données (CSV)</button>
+
+                <input type="file" id="import-csv-input" accept=".csv" style="display:none;" onchange="importCSV(event)">
+                <button class="btn-block backup-btn" onclick="document.getElementById('import-csv-input').click()" style="margin-top:10px;">📥 Importer des données (CSV)</button>
+
+                <button class="btn-block clear-btn" onclick="clearAllData()" style="margin-top:10px;">Réinitialiser TOUTES les données locales</button>
             </div>
         </div>
     </div>
@@ -685,6 +739,140 @@
         });
     }
 
+    // --- MODE SOMBRE ---
+    function toggleDarkMode() {
+        const toggle = document.getElementById('dark-mode-toggle');
+        const enabled = toggle ? toggle.checked : false;
+        document.body.classList.toggle('dark-mode', enabled);
+        localStorage.setItem('budget_app_dark_mode', enabled ? 'true' : 'false');
+    }
+
+    function loadDarkModePref() {
+        const enabled = localStorage.getItem('budget_app_dark_mode') === 'true';
+        document.body.classList.toggle('dark-mode', enabled);
+        const toggle = document.getElementById('dark-mode-toggle');
+        if(toggle) toggle.checked = enabled;
+    }
+
+    // --- EXPORT / IMPORT CSV (SAUVEGARDE MANUELLE DES DONNÉES) ---
+    function csvEscapeValue(val) {
+        val = (val === undefined || val === null) ? '' : String(val);
+        if (val.indexOf(';') !== -1 || val.indexOf('"') !== -1 || val.indexOf('\n') !== -1) {
+            val = '"' + val.replace(/"/g, '""') + '"';
+        }
+        return val;
+    }
+
+    function exportCSV() {
+        const rows = [["type", "mois", "categorie", "libelle", "valeur"]];
+
+        Object.keys(appData).sort().forEach(mId => {
+            const data = appData[mId];
+            rows.push(["BUDGET", mId, "", "", data.budget || 0]);
+
+            Object.keys(data.categoryBudgets || {}).forEach(cat => {
+                rows.push(["CATBUDGET", mId, cat, "", data.categoryBudgets[cat]]);
+            });
+
+            (data.items || []).forEach(it => {
+                rows.push(["ITEM", mId, it.category, it.name, it.price]);
+            });
+        });
+
+        const csvContent = rows.map(r => r.map(csvEscapeValue).join(';')).join('\r\n');
+        const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Sauvegarde_Budget_${new Date().toISOString().slice(0,10)}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }
+
+    function parseCSVLine(line) {
+        const result = [];
+        let cur = '';
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+            const c = line[i];
+            if (inQuotes) {
+                if (c === '"') {
+                    if (line[i + 1] === '"') { cur += '"'; i++; } else { inQuotes = false; }
+                } else {
+                    cur += c;
+                }
+            } else {
+                if (c === '"') { inQuotes = true; }
+                else if (c === ';') { result.push(cur); cur = ''; }
+                else { cur += c; }
+            }
+        }
+        result.push(cur);
+        return result;
+    }
+
+    function importCSV(event) {
+        const file = event.target.files && event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                let text = e.target.result;
+                if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+                const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+
+                if (lines.length < 2) {
+                    alert("Fichier CSV vide ou invalide.");
+                    event.target.value = '';
+                    return;
+                }
+
+                const newData = {};
+                for (let i = 1; i < lines.length; i++) {
+                    const cols = parseCSVLine(lines[i]);
+                    const type = cols[0], month = cols[1], category = cols[2], label = cols[3], value = cols[4];
+                    if (!month) continue;
+                    if (!newData[month]) newData[month] = { budget: 0, items: [], categoryBudgets: {} };
+
+                    if (type === 'BUDGET') {
+                        newData[month].budget = parseFloat(value) || 0;
+                    } else if (type === 'CATBUDGET') {
+                        if (category) newData[month].categoryBudgets[category] = parseFloat(value) || 0;
+                    } else if (type === 'ITEM') {
+                        newData[month].items.push({
+                            name: label || "Dépense",
+                            price: parseFloat(value) || 0,
+                            category: category || CATEGORIES[0].value
+                        });
+                    }
+                }
+
+                const confirmMsg = "⚠️ Importer ce fichier va REMPLACER toutes les données actuelles de l'application. Continuer ?";
+                if (!confirm(confirmMsg)) {
+                    event.target.value = '';
+                    return;
+                }
+
+                appData = newData;
+                saveDataLocal();
+                renderCategoryBudgetSettings();
+                updateUI();
+                refreshHistoryCheckboxes();
+                updateAnalysis();
+                alert("✅ Import réussi !");
+            } catch (err) {
+                console.error(err);
+                alert("❌ Erreur lors de la lecture du fichier CSV.");
+            } finally {
+                event.target.value = '';
+            }
+        };
+        reader.readAsText(file, 'UTF-8');
+    }
+
     function clearAllData() {
         if(confirm("⚠️ Supprimer définitivement toutes les données de l'appareil ? Cette action est irréversible.")) {
             localStorage.removeItem('budget_app_data_local');
@@ -697,6 +885,7 @@
         document.getElementById('current-month-input').value = selectedMonthId;
         initCategorySelect(); 
         loadDataLocal();
+        loadDarkModePref();
         renderCategoryBudgetSettings(); 
         updateUI();
         
@@ -711,4 +900,4 @@
     window.addEventListener('DOMContentLoaded', startApp);
 </script>
 </body>
-</html>
+    </html>
