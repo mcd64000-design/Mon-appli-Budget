@@ -3,99 +3,95 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Suivi Budget Local</title>
+    <title>Suivi Mensuel Budget Local</title>
     
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Suivi Budget">
-    
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <meta name="mobile-web-app-capable" content="yes">
 
+    <!-- CSS mis à jour avec variables de mode sombre -->
     <style>
         :root {
             --primary: #2ecc71; --danger: #e74c3c; --warning: #f39c12;
             --dark: #2c3e50; --light: #f8f9fa; --accent: #3498db;
-            --bg-body: #f0f2f5; --text-color: #2c3e50; --card-bg: #ffffff;
+            --bg-body: #f0f2f5; --card-bg: #ffffff; --text-main: #2c3e50;
         }
         body.dark-mode {
-            --bg-body: #121212; --text-color: #ecf0f1; --card-bg: #1e1e1e;
+            --bg-body: #121212; --card-bg: #1e1e1e; --text-main: #ecf0f1;
         }
+        body { background-color: var(--bg-body); color: var(--text-main); transition: background 0.3s; }
+        .card, header { background: var(--card-bg) !important; color: var(--text-main) !important; }
+        input, select { background: var(--card-bg) !important; color: var(--text-main) !important; border: 1px solid #555; }
 
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, sans-serif; -webkit-tap-highlight-color: transparent; }
-        body { background-color: var(--bg-body); color: var(--text-color); position: fixed; width: 100%; height: 100%; transition: background 0.3s; }
-        
-        .swiper-container { width: 200vw; height: 100vh; display: flex; transition: transform 0.3s; will-change: transform; }
-        .view-page { width: 100vw; height: 100vh; overflow-y: auto; padding: 15px; }
-        
-        .card { background: var(--card-bg); padding: 15px; border-radius: 15px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 15px; }
-        button { padding: 12px; border-radius: 10px; border: none; background: var(--primary); color: white; font-weight: bold; width: 100%; cursor: pointer; }
-        input, select { padding: 12px; border-radius: 10px; border: 1px solid #ccc; width: 100%; margin-bottom: 10px; }
-        
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10000; justify-content: center; align-items: center; padding: 20px; }
-        .modal-content { background: var(--card-bg); padding: 20px; border-radius: 15px; max-width: 400px; width: 100%; }
+        /* [RESTE DU CSS ORIGINAL INCHANGÉ] */
+        /* ... (Gardez tout votre CSS existant ici) ... */
     </style>
 </head>
 <body>
 
-<div class="swiper-container" id="swiperContainer">
-    <div class="view-page">
-        <div class="card">
-            <h1>Paramètres</h1>
-            <button onclick="toggleDarkMode()">🌙 Basculer Mode Sombre/Clair</button>
-            <hr style="margin: 15px 0;">
-            <button onclick="openSaveModal()">💾 Export (PDF/CSV)</button>
-            <input type="file" id="import-file" style="display:none" onchange="importData(event)">
-            <button onclick="document.getElementById('import-file').click()" style="margin-top:10px; background:var(--accent);">📂 Importer Sauvegarde (CSV)</button>
-        </div>
-    </div>
-</div>
+<!-- ... (Gardez tout votre HTML existant, du splash screen au swiper-container) ... -->
 
-<div class="modal" id="save-modal">
+<!-- MODIFICATION DU MODAL POUR INCLURE LE CHOIX CSV -->
+<div class="modal" id="pdf-modal">
     <div class="modal-content">
-        <h3>Choisir le format d'export</h3>
-        <label><input type="radio" name="format" value="pdf" checked> PDF (Rapport visuel)</label><br>
-        <label><input type="radio" name="format" value="csv"> CSV (Sauvegarde complète)</label>
-        <div style="display:flex; gap:10px; margin-top:15px;">
-            <button onclick="closeModal()">Annuler</button>
-            <button onclick="processExport()">Générer</button>
+        <h3>💾 Sauvegarde & Export</h3>
+        <label><input type="radio" name="export-type" value="pdf" checked> Rapport PDF</label><br>
+        <label><input type="radio" name="export-type" value="csv"> Sauvegarde CSV (Données complètes)</label>
+        <div class="months-list" id="pdf-months-list"></div>
+        <div class="modal-buttons">
+            <button class="btn-secondary" onclick="closePdfModal()">Annuler</button>
+            <button onclick="executeExport()">Valider</button>
         </div>
     </div>
 </div>
 
 <script>
-    let appData = JSON.parse(localStorage.getItem('budget_app_data_local')) || {};
+    // --- NOUVELLES FONCTIONS D'EXPORT/IMPORT ---
 
-    function toggleDarkMode() { document.body.classList.toggle('dark-mode'); }
-    function openSaveModal() { document.getElementById('save-modal').style.display = 'flex'; }
-    function closeModal() { document.getElementById('save-modal').style.display = 'none'; }
-
-    function processExport() {
-        const format = document.querySelector('input[name="format"]:checked').value;
-        if(format === 'pdf') { /* Logique existante PDF */ }
-        else { exportCSV(); }
-        closeModal();
+    function toggleDarkMode() {
+        document.body.classList.toggle('dark-mode');
     }
 
-    function exportCSV() {
-        const blob = new Blob([JSON.stringify(appData)], { type: 'text/csv' });
+    function executeExport() {
+        const type = document.querySelector('input[name="export-type"]:checked').value;
+        if(type === 'pdf') {
+            generatePDFReport();
+        } else {
+            exportAppDataCSV();
+        }
+    }
+
+    function exportAppDataCSV() {
+        const dataStr = JSON.stringify(appData);
+        const blob = new Blob([dataStr], {type: "text/csv"});
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url; a.download = 'sauvegarde_budget.csv'; a.click();
+        a.href = url;
+        a.download = "budget_backup_" + new Date().toISOString().slice(0,10) + ".csv";
+        a.click();
+        closePdfModal();
     }
 
     function importData(event) {
-        if(!confirm("⚠️ Attention : Cette action va écraser vos données actuelles. Confirmer ?")) return;
+        if(!confirm("⚠️ ATTENTION : L'importation va supprimer vos données actuelles. Confirmez-vous ?")) return;
         const file = event.target.files[0];
         const reader = new FileReader();
         reader.onload = (e) => {
             appData = JSON.parse(e.target.result);
-            localStorage.setItem('budget_app_data_local', JSON.stringify(appData));
+            saveDataLocal();
             location.reload();
         };
         reader.readAsText(file);
     }
+
+    // --- MISE À JOUR DE LA PAGE 2 (Ajout boutons dans le card paramètres) ---
+    // Dans votre section "Paramètres & Sauvegardes", ajoutez :
+    // <button class="btn-block" onclick="toggleDarkMode()">🌙 Mode Sombre/Clair</button>
+    // <input type="file" id="import-input" style="display:none" onchange="importData(event)">
+    // <button class="btn-block" onclick="document.getElementById('import-input').click()">📂 Importer Sauvegarde (CSV)</button>
+
+    // ... (Gardez tout le reste de votre code JS existant) ...
 </script>
 </body>
 </html>
-
