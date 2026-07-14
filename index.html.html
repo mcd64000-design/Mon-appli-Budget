@@ -207,6 +207,20 @@
         body.dark-mode .category-budget-toggle { color: #6ec6f1; }
         body.dark-mode .modal { background: rgba(0,0,0,0.7); }
         body.dark-mode .months-list { border-color: #2c3648; }
+
+        /* --- GESTION DES CATÉGORIES FAVORITES --- */
+        .cat-manage-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 4px; border-bottom: 1px solid #eee; gap: 8px; }
+        .cat-manage-row:last-child { border-bottom: none; }
+        .cat-manage-row .checkbox-label { flex: 1; font-size: 0.9rem; }
+        .cat-manage-arrows { display: flex; gap: 4px; flex-shrink: 0; }
+        .btn-arrow { width: auto; padding: 6px 12px; background: var(--light); color: var(--dark); font-size: 0.9rem; border-radius: 8px; }
+        .btn-arrow:disabled { opacity: 0.3; }
+        body.dark-mode .cat-manage-row { border-bottom-color: #2c3648; }
+        body.dark-mode .btn-arrow { background: #263042; color: #ecf0f1; }
+
+        .new-cat-form { border-top: 1px solid #eee; margin-top: 15px; padding-top: 15px; text-align: left; }
+        .new-cat-form p { font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; }
+        body.dark-mode .new-cat-form { border-top-color: #2c3648; }
     </style>
 </head>
 <body>
@@ -242,6 +256,26 @@
         <div class="modal-buttons">
             <button class="btn-secondary" onclick="closePdfModal()">Annuler</button>
             <button onclick="generatePDFReport()">Générer le PDF</button>
+        </div>
+    </div>
+</div>
+
+<!-- POPUP MODALE GESTION DES CATÉGORIES FAVORITES -->
+<div class="modal" id="categories-modal">
+    <div class="modal-content">
+        <h3>🗂️ Mes catégories</h3>
+        <p style="font-size:0.85rem; color:#7f8c8d; margin-bottom: 10px;">Cochez vos catégories favorites et réordonnez-les avec les flèches. Une catégorie décochée n'apparaîtra plus dans la liste d'ajout de dépense ni dans les réglages de budget par famille.</p>
+        <div class="months-list" id="categories-manage-list"></div>
+        <div class="new-cat-form">
+            <p>➕ Créer une catégorie personnalisée</p>
+            <div class="form-row" style="margin-bottom:8px;">
+                <input type="text" id="new-cat-icon" placeholder="Icône (ex: 🐶)" maxlength="4" style="flex:0 0 90px;">
+                <input type="text" id="new-cat-name" placeholder="Nom de la catégorie" maxlength="30">
+            </div>
+            <button class="btn-block" onclick="addCustomCategory()">Ajouter cette catégorie</button>
+        </div>
+        <div class="modal-buttons">
+            <button onclick="closeCategoriesModal()">Fermer</button>
         </div>
     </div>
 </div>
@@ -340,7 +374,9 @@
                     </label>
                 </div>
 
-                <button class="btn-block backup-btn" onclick="openPdfModal()" style="margin-top:15px;">💾 Sauvegarde : Générer un Rapport PDF</button>
+                <button class="btn-block backup-btn" onclick="openCategoriesModal()" style="margin-top:15px;">🗂️ Gérer mes catégories</button>
+
+                <button class="btn-block backup-btn" onclick="openPdfModal()" style="margin-top:10px;">💾 Sauvegarde : Générer un Rapport PDF</button>
 
                 <button class="btn-block backup-btn" onclick="exportCSV()" style="margin-top:10px;">📤 Exporter les données (CSV)</button>
 
@@ -359,7 +395,7 @@
 
 <script>
     const MONTH_NAMES = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
-    const CATEGORIES = [
+    let CATEGORIES = [
         { value: "Alimentaire", label: "🍎 Alimentaire" }, { value: "Bricolage", label: "🔨 Bricolage" },
         { value: "Cadeaux", label: "🎁 Cadeaux" }, { value: "Carburant", label: "⛽ Carburant" },
         { value: "Enfants", label: "👶 Enfants" }, { value: "Frais auto", label: "🚗 Frais auto" },
@@ -408,7 +444,150 @@
 
     function initCategorySelect() {
         const select = document.getElementById('item-category');
-        if(select) select.innerHTML = CATEGORIES.map(cat => `<option value="${cat.value}">${cat.label}</option>`).join('');
+        const cats = getOrderedCategories(true);
+        const list = cats.length > 0 ? cats : CATEGORIES;
+        if(select) select.innerHTML = list.map(cat => `<option value="${cat.value}">${cat.label}</option>`).join('');
+    }
+
+    // --- CATÉGORIES FAVORITES : ORDRE & VISIBILITÉ PERSONNALISÉS ---
+    function getCategoryPrefs() {
+        let prefs = null;
+        try { prefs = JSON.parse(localStorage.getItem('budget_app_category_prefs')); } catch(e) { prefs = null; }
+        if (!Array.isArray(prefs)) prefs = [];
+
+        // Garde uniquement les préférences pour des catégories qui existent toujours
+        prefs = prefs.filter(p => CATEGORIES.find(c => c.value === p.value));
+
+        // Ajoute les catégories manquantes (nouvelles ou jamais configurées) à la suite
+        CATEGORIES.forEach(c => {
+            if (!prefs.find(p => p.value === c.value)) prefs.push({ value: c.value, visible: true });
+        });
+
+        return prefs;
+    }
+
+    function saveCategoryPrefs(prefs) {
+        localStorage.setItem('budget_app_category_prefs', JSON.stringify(prefs));
+    }
+
+    function getOrderedCategories(onlyVisible) {
+        const prefs = getCategoryPrefs();
+        const ordered = prefs.map(p => CATEGORIES.find(c => c.value === p.value)).filter(Boolean);
+        if (onlyVisible) {
+            return ordered.filter(cat => {
+                const p = prefs.find(pp => pp.value === cat.value);
+                return p ? p.visible !== false : true;
+            });
+        }
+        return ordered;
+    }
+
+    function openCategoriesModal() {
+        renderCategoriesManageList();
+        document.getElementById('categories-modal').style.display = 'flex';
+    }
+
+    function closeCategoriesModal() {
+        document.getElementById('categories-modal').style.display = 'none';
+        initCategorySelect();
+        renderCategoryBudgetSettings();
+        updateUI();
+    }
+
+    function renderCategoriesManageList() {
+        const container = document.getElementById('categories-manage-list');
+        if (!container) return;
+        const prefs = getCategoryPrefs();
+        container.innerHTML = '';
+
+        prefs.forEach((p, idx) => {
+            const cat = CATEGORIES.find(c => c.value === p.value);
+            if (!cat) return;
+            const isVisible = p.visible !== false;
+            container.innerHTML += `
+                <div class="cat-manage-row">
+                    <label class="checkbox-label">
+                        <input type="checkbox" ${isVisible ? 'checked' : ''} onchange="toggleCategoryVisible(${idx})"> ${cat.label}
+                    </label>
+                    <div class="cat-manage-arrows">
+                        <button type="button" class="btn-arrow" onclick="moveCategory(${idx}, -1)" ${idx === 0 ? 'disabled' : ''}>▲</button>
+                        <button type="button" class="btn-arrow" onclick="moveCategory(${idx}, 1)" ${idx === prefs.length - 1 ? 'disabled' : ''}>▼</button>
+                        ${cat.custom ? `<button type="button" class="btn-arrow" style="color:var(--danger);" onclick="deleteCustomCategory('${cat.value.replace(/'/g, "\\'")}')">✕</button>` : ''}
+                    </div>
+                </div>`;
+        });
+    }
+
+    function toggleCategoryVisible(idx) {
+        const prefs = getCategoryPrefs();
+        if (!prefs[idx]) return;
+        prefs[idx].visible = prefs[idx].visible === false ? true : false;
+        saveCategoryPrefs(prefs);
+        renderCategoriesManageList();
+    }
+
+    function moveCategory(idx, direction) {
+        const prefs = getCategoryPrefs();
+        const newIdx = idx + direction;
+        if (newIdx < 0 || newIdx >= prefs.length) return;
+        const tmp = prefs[idx];
+        prefs[idx] = prefs[newIdx];
+        prefs[newIdx] = tmp;
+        saveCategoryPrefs(prefs);
+        renderCategoriesManageList();
+    }
+
+    // --- CATÉGORIES PERSONNALISÉES (créées par l'utilisateur) ---
+    function loadCustomCategories() {
+        let custom = [];
+        try { custom = JSON.parse(localStorage.getItem('budget_app_custom_categories')) || []; } catch(e) { custom = []; }
+        if (!Array.isArray(custom)) custom = [];
+        custom.forEach(c => {
+            if (c && c.value && !CATEGORIES.find(cat => cat.value === c.value)) {
+                CATEGORIES.push({ value: c.value, label: c.label || c.value, custom: true });
+            }
+        });
+    }
+
+    function saveCustomCategories() {
+        const custom = CATEGORIES.filter(c => c.custom).map(c => ({ value: c.value, label: c.label }));
+        localStorage.setItem('budget_app_custom_categories', JSON.stringify(custom));
+    }
+
+    function addCustomCategory() {
+        const nameEl = document.getElementById('new-cat-name');
+        const iconEl = document.getElementById('new-cat-icon');
+        const name = nameEl ? nameEl.value.trim() : '';
+        const icon = iconEl ? iconEl.value.trim() : '';
+
+        if (!name) { alert("Merci de donner un nom à la catégorie."); return; }
+
+        const exists = CATEGORIES.find(c => c.value.toLowerCase() === name.toLowerCase());
+        if (exists) { alert("Cette catégorie existe déjà."); return; }
+
+        const label = icon ? `${icon} ${name}` : `🏷️ ${name}`;
+        CATEGORIES.push({ value: name, label: label, custom: true });
+        saveCustomCategories();
+
+        if(nameEl) nameEl.value = '';
+        if(iconEl) iconEl.value = '';
+
+        renderCategoriesManageList();
+    }
+
+    function deleteCustomCategory(value) {
+        const cat = CATEGORIES.find(c => c.value === value && c.custom);
+        if (!cat) return;
+        if (!confirm(`Supprimer la catégorie "${cat.label}" ? Les dépenses déjà enregistrées avec cette catégorie resteront visibles mais ne seront plus regroupées avec une jauge dédiée.`)) return;
+
+        CATEGORIES = CATEGORIES.filter(c => c.value !== value);
+        saveCustomCategories();
+
+        let prefs = getCategoryPrefs();
+        prefs = prefs.filter(p => p.value !== value);
+        saveCategoryPrefs(prefs);
+
+        renderCategoriesManageList();
     }
 
     function toggleCategoryPanel() {
@@ -422,7 +601,9 @@
         const data = getMonthData(selectedMonthId);
         panel.innerHTML = `<div class="dispatch-info" id="dispatch-indicator"><span>Reste à distribuer :</span><span id="dispatch-left">0.00 €</span></div>`;
 
-        CATEGORIES.forEach(cat => {
+        const cats = getOrderedCategories(true);
+        const listForPanel = cats.length > 0 ? cats : CATEGORIES;
+        listForPanel.forEach(cat => {
             const currentVal = data.categoryBudgets[cat.value] || '';
             panel.innerHTML += `
                 <div class="category-budget-row">
@@ -766,6 +947,10 @@
     function exportCSV() {
         const rows = [["type", "mois", "categorie", "libelle", "valeur"]];
 
+        CATEGORIES.filter(c => c.custom).forEach(c => {
+            rows.push(["CATDEF", "", c.value, c.label, ""]);
+        });
+
         Object.keys(appData).sort().forEach(mId => {
             const data = appData[mId];
             rows.push(["BUDGET", mId, "", "", data.budget || 0]);
@@ -831,9 +1016,16 @@
                 }
 
                 const newData = {};
+                const newCustomCats = [];
                 for (let i = 1; i < lines.length; i++) {
                     const cols = parseCSVLine(lines[i]);
                     const type = cols[0], month = cols[1], category = cols[2], label = cols[3], value = cols[4];
+
+                    if (type === 'CATDEF') {
+                        if (category) newCustomCats.push({ value: category, label: label || category });
+                        continue;
+                    }
+
                     if (!month) continue;
                     if (!newData[month]) newData[month] = { budget: 0, items: [], categoryBudgets: {} };
 
@@ -858,6 +1050,15 @@
 
                 appData = newData;
                 saveDataLocal();
+
+                newCustomCats.forEach(c => {
+                    if (!CATEGORIES.find(cat => cat.value === c.value)) {
+                        CATEGORIES.push({ value: c.value, label: c.label, custom: true });
+                    }
+                });
+                saveCustomCategories();
+
+                initCategorySelect();
                 renderCategoryBudgetSettings();
                 updateUI();
                 refreshHistoryCheckboxes();
@@ -883,6 +1084,7 @@
 
     function startApp() {
         document.getElementById('current-month-input').value = selectedMonthId;
+        loadCustomCategories();
         initCategorySelect(); 
         loadDataLocal();
         loadDarkModePref();
