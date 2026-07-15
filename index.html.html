@@ -151,6 +151,9 @@
         .item-details { display: flex; flex-direction: column; text-align: left; }
         .item-name { font-weight: 600; }
         .item-meta { font-size: 0.85rem; color: #7f8c8d; }
+        .item-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+        .item-date { font-size: 0.72rem; color: #b0b8c1; white-space: nowrap; }
+        body.dark-mode .item-date { color: #64748b; }
         .tag { display: inline-block; background: #e1f5fe; color: var(--accent); padding: 2px 6px; border-radius: 5px; font-size: 0.75rem; margin-top: 2px; font-weight: bold; }
         .btn-delete { background: none; color: var(--danger); font-size: 1.1rem; width: auto; border: none; }
         .checkbox-group { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: var(--light); padding: 10px; border-radius: 10px; }
@@ -658,6 +661,15 @@
         return appData[monthId];
     }
 
+    function formatItemDate(iso) {
+        if (!iso) return '';
+        const d = new Date(iso);
+        if (isNaN(d.getTime())) return '';
+        const datePart = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+        const timePart = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+        return `${datePart} ${timePart}`;
+    }
+
     function updateUI() {
         try {
             const data = getMonthData(selectedMonthId);
@@ -686,6 +698,7 @@
                 if(categoryTotals[item.category] !== undefined) categoryTotals[item.category] += item.price;
                 const catObj = CATEGORIES.find(c => c.value === item.category) || { label: item.category };
                 const originalIndex = data.items.indexOf(item);
+                const dateLabel = formatItemDate(item.createdAt);
 
                 listDeco.innerHTML += `
                     <div class="item">
@@ -693,7 +706,10 @@
                             <span class="item-name">${item.name}</span>
                             <span class="item-meta">${item.price.toFixed(2)} € • <span class="tag">${catObj.label}</span></span>
                         </div>
-                        <button class="btn-delete" onclick="removeItem(${originalIndex})">✕</button>
+                        <div class="item-actions">
+                            ${dateLabel ? `<span class="item-date">${dateLabel}</span>` : ''}
+                            <button class="btn-delete" onclick="removeItem(${originalIndex})">✕</button>
+                        </div>
                     </div>`;
             });
 
@@ -747,13 +763,18 @@
         const category = catEl ? catEl.value : CATEGORIES[0].value;
         if (isNaN(price) || price <= 0) return;
 
-        getMonthData(selectedMonthId).items.push({ name, price, category });
+        getMonthData(selectedMonthId).items.push({ name, price, category, createdAt: new Date().toISOString() });
         if(nameEl) nameEl.value = ''; if(priceEl) priceEl.value = '';
         saveDataLocal(); updateUI();
     }
 
     function removeItem(index) {
-        getMonthData(selectedMonthId).items.splice(index, 1);
+        const data = getMonthData(selectedMonthId);
+        const item = data.items[index];
+        const label = item ? `"${item.name}" (${item.price.toFixed(2)} €)` : "cette dépense";
+        if (!confirm(`Supprimer ${label} ? Cette action est irréversible.`)) return;
+
+        data.items.splice(index, 1);
         saveDataLocal(); updateUI();
     }
 
@@ -951,22 +972,22 @@
     }
 
     function exportCSV() {
-        const rows = [["type", "mois", "categorie", "libelle", "valeur"]];
+        const rows = [["type", "mois", "categorie", "libelle", "valeur", "date"]];
 
         CATEGORIES.filter(c => c.custom).forEach(c => {
-            rows.push(["CATDEF", "", c.value, c.label, ""]);
+            rows.push(["CATDEF", "", c.value, c.label, "", ""]);
         });
 
         Object.keys(appData).sort().forEach(mId => {
             const data = appData[mId];
-            rows.push(["BUDGET", mId, "", "", data.budget || 0]);
+            rows.push(["BUDGET", mId, "", "", data.budget || 0, ""]);
 
             Object.keys(data.categoryBudgets || {}).forEach(cat => {
-                rows.push(["CATBUDGET", mId, cat, "", data.categoryBudgets[cat]]);
+                rows.push(["CATBUDGET", mId, cat, "", data.categoryBudgets[cat], ""]);
             });
 
             (data.items || []).forEach(it => {
-                rows.push(["ITEM", mId, it.category, it.name, it.price]);
+                rows.push(["ITEM", mId, it.category, it.name, it.price, it.createdAt || ""]);
             });
         });
 
@@ -1025,7 +1046,7 @@
                 const newCustomCats = [];
                 for (let i = 1; i < lines.length; i++) {
                     const cols = parseCSVLine(lines[i]);
-                    const type = cols[0], month = cols[1], category = cols[2], label = cols[3], value = cols[4];
+                    const type = cols[0], month = cols[1], category = cols[2], label = cols[3], value = cols[4], dateVal = cols[5];
 
                     if (type === 'CATDEF') {
                         if (category) newCustomCats.push({ value: category, label: label || category });
@@ -1043,7 +1064,8 @@
                         newData[month].items.push({
                             name: label || "Dépense",
                             price: parseFloat(value) || 0,
-                            category: category || CATEGORIES[0].value
+                            category: category || CATEGORIES[0].value,
+                            createdAt: dateVal || null
                         });
                     }
                 }
@@ -1108,4 +1130,4 @@
     window.addEventListener('DOMContentLoaded', startApp);
 </script>
 </body>
-</html>
+                    </html>
