@@ -545,49 +545,73 @@
 
     function translateAuthError(msg) {
         if (/Invalid login credentials/i.test(msg)) return "E-mail ou mot de passe incorrect.";
-        if (/User already registered/i.test(msg)) return "Un compte existe déjà avec cet e-mail.";
-        if (/Email not confirmed/i.test(msg)) return "Merci de confirmer ton e-mail avant de te connecter (vérifie ta boîte mail).";
+        if (/User already registered/i.test(msg)) return "Un compte existe déjà avec cet e-mail. Essaie de te connecter, ou clique sur \"Mot de passe oublié ?\".";
+        if (/Email not confirmed/i.test(msg)) return "Merci de confirmer ton e-mail avant de te connecter (vérifie ta boîte mail, y compris les spams).";
         if (/Password should be/i.test(msg)) return "Le mot de passe doit contenir au moins 6 caractères.";
         if (/Unable to validate email/i.test(msg)) return "Adresse e-mail invalide.";
+        if (/security purposes|rate limit|you can only request/i.test(msg)) return "Merci de patienter environ 1 minute avant de redemander un e-mail (limite anti-spam).";
         return msg;
     }
 
+    let authRequestInFlight = false;
+
     async function handleSignIn() {
+        if (authRequestInFlight) return;
         const email = (document.getElementById('auth-email').value || '').trim();
         const password = document.getElementById('auth-password').value || '';
         if (!email || !password) { showAuthError("Merci de renseigner ton e-mail et ton mot de passe."); return; }
 
+        authRequestInFlight = true;
         const btn = document.getElementById('auth-signin-btn');
-        if (btn) btn.innerText = "Connexion...";
+        const signupBtn = document.getElementById('auth-signup-btn');
+        if (btn) { btn.disabled = true; btn.innerText = "Connexion..."; }
+        if (signupBtn) signupBtn.disabled = true;
+
         const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
-        if (btn) btn.innerText = "Se connecter";
+
+        if (btn) { btn.disabled = false; btn.innerText = "Se connecter"; }
+        if (signupBtn) signupBtn.disabled = false;
+        authRequestInFlight = false;
 
         if (error) { showAuthError(translateAuthError(error.message)); return; }
     }
 
     async function handleSignUp() {
+        if (authRequestInFlight) return;
         const email = (document.getElementById('auth-email').value || '').trim();
         const password = document.getElementById('auth-password').value || '';
         if (!email || !password) { showAuthError("Merci de renseigner ton e-mail et ton mot de passe."); return; }
         if (password.length < 6) { showAuthError("Le mot de passe doit contenir au moins 6 caractères."); return; }
 
+        authRequestInFlight = true;
         const btn = document.getElementById('auth-signup-btn');
-        if (btn) btn.innerText = "Création...";
+        const signinBtn = document.getElementById('auth-signin-btn');
+        if (btn) { btn.disabled = true; btn.innerText = "Création..."; }
+        if (signinBtn) signinBtn.disabled = true;
+
         const { data, error } = await supabaseClient.auth.signUp({ email, password });
-        if (btn) btn.innerText = "Créer un compte";
+
+        if (btn) { btn.disabled = false; btn.innerText = "Créer un compte"; }
+        if (signinBtn) signinBtn.disabled = false;
+        authRequestInFlight = false;
 
         if (error) { showAuthError(translateAuthError(error.message)); return; }
         if (data && data.session) return; // Confirmation e-mail désactivée : connexion immédiate
 
-        showAuthInfo("✅ Compte créé ! Vérifie ta boîte mail pour confirmer ton adresse, puis connecte-toi.");
+        showAuthInfo("✅ Compte créé ! Vérifie ta boîte mail (et le dossier spam) pour confirmer ton adresse, puis connecte-toi.");
     }
 
     async function handleForgotPassword() {
+        if (authRequestInFlight) return;
         const email = (document.getElementById('auth-email').value || '').trim();
         if (!email) { showAuthError("Renseigne ton e-mail ci-dessus puis reclique sur ce lien."); return; }
+
+        authRequestInFlight = true;
         const { error } = await supabaseClient.auth.resetPasswordForEmail(email);
+        authRequestInFlight = false;
+
         if (error) { showAuthError(translateAuthError(error.message)); return; }
-        showAuthInfo("📧 Un e-mail de réinitialisation vient de t'être envoyé.");
+        showAuthInfo("📧 Un e-mail de réinitialisation vient de t'être envoyé (pense à vérifier tes spams).");
     }
 
     async function handleSignOut() {
