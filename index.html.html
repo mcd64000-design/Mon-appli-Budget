@@ -339,6 +339,23 @@
         </div>
     </div>
 
+    <!-- POPUP MODALE CHANGEMENT DE MOT DE PASSE -->
+    <div class="modal" id="password-modal">
+        <div class="modal-content">
+            <h3>🔑 Changer mon mot de passe</h3>
+            <div class="auth-error" id="password-error" style="display:none;"></div>
+            <div class="auth-info" id="password-info" style="display:none;"></div>
+            <div style="text-align:left;">
+                <input type="password" id="new-password-1" placeholder="Nouveau mot de passe" autocomplete="new-password">
+                <input type="password" id="new-password-2" placeholder="Confirme le mot de passe" autocomplete="new-password" style="margin-top:10px;">
+            </div>
+            <div class="modal-buttons">
+                <button class="btn-secondary" onclick="closePasswordModal()">Annuler</button>
+                <button id="password-save-btn" onclick="handleChangePassword()">Enregistrer</button>
+            </div>
+        </div>
+    </div>
+
     <!-- CONTENEUR PRINCIPAL SWIPER -->
     <div class="swiper-container" id="swiperContainer">
 
@@ -429,7 +446,8 @@
                         <span class="account-label">Connecté avec</span>
                         <span class="account-email" id="user-email-label">—</span>
                     </div>
-                    <button class="btn-block clear-btn" onclick="handleSignOut()">🚪 Se déconnecter</button>
+                    <button class="btn-block backup-btn" onclick="openPasswordModal()">🔑 Changer mon mot de passe</button>
+                    <button class="btn-block clear-btn" onclick="handleSignOut()" style="margin-top:10px;">🚪 Se déconnecter</button>
 
                     <div class="settings-row" style="margin-top:20px;">
                         <span>🌙 Mode sombre</span>
@@ -612,6 +630,43 @@
 
         if (error) { showAuthError(translateAuthError(error.message)); return; }
         showAuthInfo("📧 Un e-mail de réinitialisation vient de t'être envoyé (pense à vérifier tes spams).");
+    }
+
+    function openPasswordModal() {
+        const err = document.getElementById('password-error');
+        const info = document.getElementById('password-info');
+        if (err) err.style.display = 'none';
+        if (info) info.style.display = 'none';
+        document.getElementById('new-password-1').value = '';
+        document.getElementById('new-password-2').value = '';
+        document.getElementById('password-modal').style.display = 'flex';
+    }
+
+    function closePasswordModal() {
+        document.getElementById('password-modal').style.display = 'none';
+    }
+
+    async function handleChangePassword() {
+        const p1 = document.getElementById('new-password-1').value || '';
+        const p2 = document.getElementById('new-password-2').value || '';
+        const err = document.getElementById('password-error');
+        const info = document.getElementById('password-info');
+
+        if (p1.length < 6) { err.innerText = "Le mot de passe doit contenir au moins 6 caractères."; err.style.display = 'block'; if(info) info.style.display='none'; return; }
+        if (p1 !== p2) { err.innerText = "Les deux mots de passe ne correspondent pas."; err.style.display = 'block'; if(info) info.style.display='none'; return; }
+
+        const btn = document.getElementById('password-save-btn');
+        if (btn) { btn.disabled = true; btn.innerText = "Enregistrement..."; }
+
+        const { error } = await supabaseClient.auth.updateUser({ password: p1 });
+
+        if (btn) { btn.disabled = false; btn.innerText = "Enregistrer"; }
+
+        if (error) { err.innerText = translateAuthError(error.message); err.style.display = 'block'; if(info) info.style.display='none'; return; }
+
+        if (err) err.style.display = 'none';
+        if (info) { info.innerText = "✅ Mot de passe mis à jour !"; info.style.display = 'block'; }
+        setTimeout(closePasswordModal, 1200);
     }
 
     async function handleSignOut() {
