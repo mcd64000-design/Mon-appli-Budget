@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Suivi Mensuel Budget Local</title>
+    <title>Suivi Mensuel Budget</title>
     
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -16,6 +16,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Librairie locale pour générer le PDF proprement -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <!-- Client Supabase (comptes + base de données en ligne) -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <style>
         :root {
@@ -79,8 +81,10 @@
             height: 8px;
             border-radius: 50%;
             background-color: #cbd5e1;
-            transition: background-color 0.3s;
+            transition: background-color 0.3s, transform 0.2s;
+            cursor: pointer;
         }
+        .dot:active { transform: scale(1.3); }
 
         .dot.active {
             background-color: var(--accent);
@@ -90,7 +94,7 @@
         #splash-screen {
             position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; height: 100dvh;
             background-color: #1a252f;
-            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            display: none; flex-direction: column; justify-content: center; align-items: center;
             z-index: 9999; transition: opacity 0.5s ease, visibility 0.5s; overflow: hidden;
         }
 
@@ -112,7 +116,7 @@
         header { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 15px; text-align: center; }
         h1 { font-size: 1.4rem; margin-bottom: 10px; color: var(--dark); }
         .month-selector-main { margin-bottom: 15px; display: flex; flex-direction: column; gap: 5px; }
-        input[type="month"], select, input[type="text"], input[type="number"], button { padding: 12px; border-radius: 10px; border: 1px solid #ccc; font-size: 1rem; outline: none; width: 100%; background: white; }
+        input[type="month"], select, input[type="text"], input[type="number"], input[type="email"], input[type="password"], button { padding: 12px; border-radius: 10px; border: 1px solid #ccc; font-size: 1rem; outline: none; width: 100%; background: white; }
         .budget-setup { display: flex; gap: 10px; margin-bottom: 10px; }
         .budget-setup input { flex: 1; }
         .budget-setup button { width: auto; padding: 12px 20px; }
@@ -193,7 +197,8 @@
         body.dark-mode { background-color: #10161f; color: #ecf0f1; }
         body.dark-mode header,
         body.dark-mode .card,
-        body.dark-mode .modal-content { background: #1c2431; color: #ecf0f1; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+        body.dark-mode .modal-content,
+        body.dark-mode .auth-box { background: #1c2431; color: #ecf0f1; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
         body.dark-mode h1, body.dark-mode h3 { color: #ecf0f1; }
         body.dark-mode .stat-box,
         body.dark-mode .category-budget-panel,
@@ -206,7 +211,9 @@
         body.dark-mode input[type="month"],
         body.dark-mode select,
         body.dark-mode input[type="text"],
-        body.dark-mode input[type="number"] { background: #263042; color: #ecf0f1; border-color: #3b4a5e; }
+        body.dark-mode input[type="number"],
+        body.dark-mode input[type="email"],
+        body.dark-mode input[type="password"] { background: #263042; color: #ecf0f1; border-color: #3b4a5e; }
         body.dark-mode .item { border-bottom-color: #2c3648; }
         body.dark-mode .item-meta { color: #9aa7b8; }
         body.dark-mode .tag { background: #1f3542; color: #6ec6f1; }
@@ -230,6 +237,28 @@
         .new-cat-form { border-top: 1px solid #eee; margin-top: 15px; padding-top: 15px; text-align: left; }
         .new-cat-form p { font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; }
         body.dark-mode .new-cat-form { border-top-color: #2c3648; }
+
+        /* --- ÉCRAN DE CONNEXION --- */
+        .auth-screen {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; height: 100dvh;
+            background: linear-gradient(160deg, #1a252f, #2c3e50);
+            display: flex; align-items: center; justify-content: center;
+            padding: 20px; z-index: 9998; overflow-y: auto; -webkit-overflow-scrolling: touch;
+        }
+        .auth-box { background: white; border-radius: 18px; padding: 28px 24px; max-width: 380px; width: 100%; box-shadow: 0 10px 30px rgba(0,0,0,0.35); text-align: center; margin: auto; }
+        .auth-box h1 { font-size: 1.5rem; margin-bottom: 6px; }
+        .auth-subtitle { font-size: 0.85rem; color: #7f8c8d; margin-bottom: 18px; }
+        .auth-error { background: #fdf2f2; color: var(--danger); font-size: 0.85rem; padding: 10px; border-radius: 8px; margin-bottom: 12px; text-align: left; }
+        .auth-info { background: #e8f4f8; color: #2980b9; font-size: 0.85rem; padding: 10px; border-radius: 8px; margin-bottom: 12px; text-align: left; }
+        .auth-forgot { background: none; color: var(--accent); font-weight: 600; font-size: 0.85rem; margin-top: 14px; border: none; width: auto; padding: 4px; }
+        body.dark-mode .auth-subtitle { color: #9aa7b8; }
+
+        /* --- COMPTE (RÉGLAGES) --- */
+        .account-box { background: var(--light); border-radius: 10px; padding: 12px; margin-bottom: 15px; text-align: left; }
+        .account-box .account-label { font-size: 0.75rem; text-transform: uppercase; color: #7f8c8d; display: block; margin-bottom: 3px; }
+        .account-box .account-email { font-weight: 600; font-size: 0.9rem; word-break: break-all; }
+        body.dark-mode .account-box { background: #263042; }
+        body.dark-mode .account-box .account-label { color: #9aa7b8; }
     </style>
 </head>
 <body>
@@ -251,160 +280,200 @@
             </g>
         </svg>
     </div>
-    <div class="splash-title">Budget Local</div>
+    <div class="splash-title">Budget</div>
     <div class="splash-subtitle">BY MCD Studio</div>
     <div class="splash-status" id="splash-status">Chargement...</div>
 </div>
 
-<!-- POPUP MODALE EXPORT PDF -->
-<div class="modal" id="pdf-modal">
-    <div class="modal-content">
-        <h3>💾 Sauvegarde & Export PDF</h3>
-        <p style="font-size:0.85rem; color:#7f8c8d; margin-bottom: 10px;">Sélectionnez les mois à inclure dans le rapport (Synthèse par famille uniquement) :</p>
-        <div class="months-list" id="pdf-months-list"></div>
-        <div class="modal-buttons">
-            <button class="btn-secondary" onclick="closePdfModal()">Annuler</button>
-            <button onclick="generatePDFReport()">Générer le PDF</button>
-        </div>
+<!-- ÉCRAN DE CONNEXION -->
+<div class="auth-screen" id="auth-screen">
+    <div class="auth-box">
+        <h1>💼 Suivi Budget</h1>
+        <p class="auth-subtitle">Connecte-toi pour retrouver tes dépenses en sécurité, sur tous tes appareils.</p>
+
+        <div class="auth-error" id="auth-error" style="display:none;"></div>
+        <div class="auth-info" id="auth-info" style="display:none;"></div>
+
+        <input type="email" id="auth-email" placeholder="Adresse e-mail" autocomplete="email">
+        <input type="password" id="auth-password" placeholder="Mot de passe" autocomplete="current-password" style="margin-top:10px;">
+
+        <button class="btn-block" id="auth-signin-btn" onclick="handleSignIn()" style="margin-top:15px;">Se connecter</button>
+        <button class="btn-block btn-secondary" id="auth-signup-btn" onclick="handleSignUp()" style="margin-top:10px;">Créer un compte</button>
+        <button type="button" class="auth-forgot" onclick="handleForgotPassword()">Mot de passe oublié ?</button>
     </div>
 </div>
 
-<!-- POPUP MODALE GESTION DES CATÉGORIES FAVORITES -->
-<div class="modal" id="categories-modal">
-    <div class="modal-content">
-        <h3>🗂️ Mes catégories</h3>
-        <p style="font-size:0.85rem; color:#7f8c8d; margin-bottom: 10px;">Cochez vos catégories favorites et réordonnez-les avec les flèches. Une catégorie décochée n'apparaîtra plus dans la liste d'ajout de dépense ni dans les réglages de budget par famille.</p>
-        <div class="months-list" id="categories-manage-list"></div>
-        <div class="new-cat-form">
-            <p>➕ Créer une catégorie personnalisée</p>
-            <div class="form-row" style="margin-bottom:8px;">
-                <input type="text" id="new-cat-icon" placeholder="Icône (ex: 🐶)" maxlength="4" style="flex:0 0 90px;">
-                <input type="text" id="new-cat-name" placeholder="Nom de la catégorie" maxlength="30">
+<!-- APPLICATION (visible uniquement une fois connecté) -->
+<div id="app-root" style="display:none;">
+
+    <!-- POPUP MODALE EXPORT PDF -->
+    <div class="modal" id="pdf-modal">
+        <div class="modal-content">
+            <h3>💾 Sauvegarde & Export PDF</h3>
+            <p style="font-size:0.85rem; color:#7f8c8d; margin-bottom: 10px;">Sélectionnez les mois à inclure dans le rapport (Synthèse par famille uniquement) :</p>
+            <div class="months-list" id="pdf-months-list"></div>
+            <div class="modal-buttons">
+                <button class="btn-secondary" onclick="closePdfModal()">Annuler</button>
+                <button onclick="generatePDFReport()">Générer le PDF</button>
             </div>
-            <button class="btn-block" onclick="addCustomCategory()">Ajouter cette catégorie</button>
-        </div>
-        <div class="modal-buttons">
-            <button onclick="closeCategoriesModal()">Fermer</button>
         </div>
     </div>
+
+    <!-- POPUP MODALE GESTION DES CATÉGORIES FAVORITES -->
+    <div class="modal" id="categories-modal">
+        <div class="modal-content">
+            <h3>🗂️ Mes catégories</h3>
+            <p style="font-size:0.85rem; color:#7f8c8d; margin-bottom: 10px;">Cochez vos catégories favorites et réordonnez-les avec les flèches. Une catégorie décochée n'apparaîtra plus dans la liste d'ajout de dépense ni dans les réglages de budget par famille.</p>
+            <div class="months-list" id="categories-manage-list"></div>
+            <div class="new-cat-form">
+                <p>➕ Créer une catégorie personnalisée</p>
+                <div class="form-row" style="margin-bottom:8px;">
+                    <input type="text" id="new-cat-icon" placeholder="Icône (ex: 🐶)" maxlength="4" style="flex:0 0 90px;">
+                    <input type="text" id="new-cat-name" placeholder="Nom de la catégorie" maxlength="30">
+                </div>
+                <button class="btn-block" onclick="addCustomCategory()">Ajouter cette catégorie</button>
+            </div>
+            <div class="modal-buttons">
+                <button onclick="closeCategoriesModal()">Fermer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CONTENEUR PRINCIPAL SWIPER -->
+    <div class="swiper-container" id="swiperContainer">
+
+        <!-- PAGE 1 : SUIVI DES TRANSACTIONS -->
+        <div class="view-page" id="page-courses">
+            <div class="container">
+                <div class="swipe-dots">
+                    <div class="dot active" onclick="goToPage(0)"></div>
+                    <div class="dot" onclick="goToPage(1)"></div>
+                </div>
+
+                <header>
+                    <h1>💼 Suivi Mensuel Budget</h1>
+                    <div class="month-selector-main">
+                        <input type="month" id="current-month-input" onchange="changeCurrentMonth()">
+                    </div>
+                    <div class="budget-setup">
+                        <input type="number" id="initial-budget" placeholder="Fixer le budget global (€)" oninput="calculateDispatchRemaining()">
+                        <button onclick="setBudget()">OK</button>
+                    </div>
+                    <button class="category-budget-toggle" onclick="toggleCategoryPanel()">⚙️ Ajuster les budgets par familles</button>
+                    <div class="category-budget-panel" id="category-budget-panel"></div>
+                    <div class="stats">
+                        <div class="stat-box"><span>Total Dépenses</span><strong id="total-cart">0.00 €</strong></div>
+                        <div class="stat-box" id="remaining-box"><span>Reste Global</span><strong id="total-remaining">0.00 €</strong></div>
+                    </div>
+                </header>
+
+                <!-- GAUJES FAMILLES -->
+                <div class="card" id="gauges-card" style="display:none;">
+                    <h3>Suivi des Budgets Familles</h3>
+                    <div class="live-gauges-container" id="live-gauges-container"></div>
+                </div>
+
+                <!-- AJOUT DÉPENSE -->
+                <div class="card">
+                    <h3>Nouvelle Dépense</h3>
+                    <div class="form-row" style="margin-top:10px;">
+                        <input type="text" id="item-name" placeholder="Article / Libellé">
+                        <input type="number" id="item-price" placeholder="Prix (€)" step="0.01">
+                    </div>
+                    <div class="form-row">
+                        <select id="item-category"></select>
+                    </div>
+                    <button class="btn-block" onclick="addItem()">Ajouter la dépense</button>
+                </div>
+
+                <!-- HISTORIQUE DES TRANSACTIONS VISUELLES SUR TÉLÉPHONE -->
+                <div class="card">
+                    <div class="list-header">
+                        <h3>Dépenses enregistrées</h3>
+                        <select id="sort-order" class="list-sort" onchange="updateUI()">
+                            <option value="date">📅 Date de saisie</option>
+                            <option value="category">🏷️ Regrouper par Famille</option>
+                        </select>
+                    </div>
+                    <div class="shopping-list" id="shopping-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- PAGE 2 : ANALYSE & PARAMÈTRES -->
+        <div class="view-page" id="page-history">
+            <div class="container">
+                <div class="swipe-dots">
+                    <div class="dot" onclick="goToPage(0)"></div>
+                    <div class="dot active" onclick="goToPage(1)"></div>
+                </div>
+
+                <header>
+                    <h1>📊 Analyse & Historique</h1>
+                </header>
+                <div class="card"><div class="checkbox-group" id="months-checkboxes"></div></div>
+                <div class="card">
+                    <h3>Répartition par Catégorie</h3>
+                    <div class="chart-container"><canvas id="categoryChart"></canvas></div>
+                </div>
+                <div class="card">
+                    <h3 id="annual-chart-title">Récapitulatif Annuel</h3>
+                    <div class="chart-container"><canvas id="annualChart"></canvas></div>
+                </div>
+                
+                <!-- PARAMÈTRES ET SAUVEGARDES -->
+                <div class="card">
+                    <h3>Paramètres & Compte</h3>
+
+                    <div class="account-box" style="margin-top:15px;">
+                        <span class="account-label">Connecté avec</span>
+                        <span class="account-email" id="user-email-label">—</span>
+                    </div>
+                    <button class="btn-block clear-btn" onclick="handleSignOut()">🚪 Se déconnecter</button>
+
+                    <div class="settings-row" style="margin-top:20px;">
+                        <span>🌙 Mode sombre</span>
+                        <label class="switch">
+                            <input type="checkbox" id="dark-mode-toggle" onchange="toggleDarkMode()">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <button class="btn-block backup-btn" onclick="openCategoriesModal()" style="margin-top:15px;">🗂️ Gérer mes catégories</button>
+
+                    <button class="btn-block backup-btn" onclick="openPdfModal()" style="margin-top:10px;">💾 Sauvegarde : Générer un Rapport PDF</button>
+
+                    <button class="btn-block backup-btn" onclick="exportCSV()" style="margin-top:10px;">📤 Exporter les données (CSV)</button>
+
+                    <input type="file" id="import-csv-input" accept=".csv,text/csv,text/comma-separated-values,application/csv,text/plain,*/*" style="display:none;" onchange="importCSV(event)">
+                    <button class="btn-block backup-btn" onclick="document.getElementById('import-csv-input').click()" style="margin-top:10px;">📥 Importer des données (CSV)</button>
+
+                    <button class="btn-block clear-btn" onclick="clearAllData()" style="margin-top:10px;">Réinitialiser TOUTES les données de mon compte</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ESPACE CACHÉ DE CONSTRUCTION HTML DU PDF -->
+    <div id="pdf-template-container" style="display: none;"></div>
+
 </div>
-
-<!-- CONTENEUR PRINCIPAL SWIPER -->
-<div class="swiper-container" id="swiperContainer">
-
-    <!-- PAGE 1 : SUIVI DES TRANSACTIONS -->
-    <div class="view-page" id="page-courses">
-        <div class="container">
-            <div class="swipe-dots">
-                <div class="dot active"></div>
-                <div class="dot"></div>
-            </div>
-
-            <header>
-                <h1>💼 Suivi Mensuel Budget</h1>
-                <div class="month-selector-main">
-                    <input type="month" id="current-month-input" onchange="changeCurrentMonth()">
-                </div>
-                <div class="budget-setup">
-                    <input type="number" id="initial-budget" placeholder="Fixer le budget global (€)" oninput="calculateDispatchRemaining()">
-                    <button onclick="setBudget()">OK</button>
-                </div>
-                <button class="category-budget-toggle" onclick="toggleCategoryPanel()">⚙️ Ajuster les budgets par familles</button>
-                <div class="category-budget-panel" id="category-budget-panel"></div>
-                <div class="stats">
-                    <div class="stat-box"><span>Total Dépenses</span><strong id="total-cart">0.00 €</strong></div>
-                    <div class="stat-box" id="remaining-box"><span>Reste Global</span><strong id="total-remaining">0.00 €</strong></div>
-                </div>
-            </header>
-
-            <!-- GAUJES FAMILLES -->
-            <div class="card" id="gauges-card" style="display:none;">
-                <h3>Suivi des Budgets Familles</h3>
-                <div class="live-gauges-container" id="live-gauges-container"></div>
-            </div>
-
-            <!-- AJOUT DÉPENSE -->
-            <div class="card">
-                <h3>Nouvelle Dépense</h3>
-                <div class="form-row" style="margin-top:10px;">
-                    <input type="text" id="item-name" placeholder="Article / Libellé">
-                    <input type="number" id="item-price" placeholder="Prix (€)" step="0.01">
-                </div>
-                <div class="form-row">
-                    <select id="item-category"></select>
-                </div>
-                <button class="btn-block" onclick="addItem()">Ajouter la dépense</button>
-            </div>
-
-            <!-- HISTORIQUE DES TRANSACTIONS VISUELLES SUR TÉLÉPHONE -->
-            <div class="card">
-                <div class="list-header">
-                    <h3>Dépenses enregistrées</h3>
-                    <select id="sort-order" class="list-sort" onchange="updateUI()">
-                        <option value="date">📅 Date de saisie</option>
-                        <option value="category">🏷️ Regrouper par Famille</option>
-                    </select>
-                </div>
-                <div class="shopping-list" id="shopping-list"></div>
-            </div>
-        </div>
-    </div>
-
-    <!-- PAGE 2 : ANALYSE & PARAMÈTRES -->
-    <div class="view-page" id="page-history">
-        <div class="container">
-            <div class="swipe-dots">
-                <div class="dot"></div>
-                <div class="dot active"></div>
-            </div>
-
-            <header>
-                <h1>📊 Analyse & Historique</h1>
-            </header>
-            <div class="card"><div class="checkbox-group" id="months-checkboxes"></div></div>
-            <div class="card">
-                <h3>Répartition par Catégorie</h3>
-                <div class="chart-container"><canvas id="categoryChart"></canvas></div>
-            </div>
-            <div class="card">
-                <h3 id="annual-chart-title">Récapitulatif Annuel</h3>
-                <div class="chart-container"><canvas id="annualChart"></canvas></div>
-            </div>
-            
-            <!-- PARAMÈTRES ET SAUVEGARDES LOCALES -->
-            <div class="card">
-                <h3>Paramètres & Sauvegardes</h3>
-
-                <div class="settings-row" style="margin-top:15px;">
-                    <span>🌙 Mode sombre</span>
-                    <label class="switch">
-                        <input type="checkbox" id="dark-mode-toggle" onchange="toggleDarkMode()">
-                        <span class="slider"></span>
-                    </label>
-                </div>
-
-                <button class="btn-block backup-btn" onclick="openCategoriesModal()" style="margin-top:15px;">🗂️ Gérer mes catégories</button>
-
-                <button class="btn-block backup-btn" onclick="openPdfModal()" style="margin-top:10px;">💾 Sauvegarde : Générer un Rapport PDF</button>
-
-                <button class="btn-block backup-btn" onclick="exportCSV()" style="margin-top:10px;">📤 Exporter les données (CSV)</button>
-
-                <input type="file" id="import-csv-input" accept=".csv,text/csv,text/comma-separated-values,application/csv,text/plain,*/*" style="display:none;" onchange="importCSV(event)">
-                <button class="btn-block backup-btn" onclick="document.getElementById('import-csv-input').click()" style="margin-top:10px;">📥 Importer des données (CSV)</button>
-
-                <button class="btn-block clear-btn" onclick="clearAllData()" style="margin-top:10px;">Réinitialiser TOUTES les données locales</button>
-            </div>
-        </div>
-    </div>
-
-</div>
-
-<!-- ESPACE CACHÉ DE CONSTRUCTION HTML DU PDF -->
-<div id="pdf-template-container" style="display: none;"></div>
 
 <script>
+    // ==============================================================
+    // CONFIGURATION SUPABASE (comptes + base de données en ligne)
+    // ==============================================================
+    const SUPABASE_URL = "https://vqvuzxlulfoyxvzpbtlw.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZxdnV6eGx1bGZveXh2enBidGx3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQxMzIxMTYsImV4cCI6MjA5OTcwODExNn0.HgZQ0tyvq6xSY0DyMZBtF0YVrIxqxqx4gqV6LRmlyGE";
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let currentUser = null;
+    let appEntered = false;
+    let categoryPrefsCache = null;
+
     const MONTH_NAMES = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
-    let CATEGORIES = [
+    const BASE_CATEGORIES = [
         { value: "Alimentaire", label: "🍎 Alimentaire" }, { value: "Bricolage", label: "🔨 Bricolage" },
         { value: "Cadeaux", label: "🎁 Cadeaux" }, { value: "Carburant", label: "⛽ Carburant" },
         { value: "Enfants", label: "👶 Enfants" }, { value: "Frais auto", label: "🚗 Frais auto" },
@@ -413,13 +482,33 @@
         { value: "Sport", label: "⚽ Sport" }, { value: "Sorties", label: "🎉 Sorties" },
         { value: "Transport", label: "🚌 Transport" }, { value: "Vêtements", label: "👕 Vêtements" }
     ];
+    let CATEGORIES = BASE_CATEGORIES.map(c => ({ ...c }));
 
     let appData = {};
     let selectedMonthId = new Date().toISOString().slice(0, 7);
 
-    // --- ENREGISTREMENT ET NAVIGATION SWIPE (INCHANGÉS) ---
+    // --- NAVIGATION : SWIPE + CLIC SUR LES POINTS ---
     const swiperContainer = document.getElementById('swiperContainer');
     let startX = 0, currentX = 0, isTracking = false, currentViewIndex = 0; 
+
+    function goToPage(pageIndex) {
+        if (pageIndex === currentViewIndex) return;
+        currentViewIndex = pageIndex;
+        swiperContainer.style.transform = pageIndex === 1 ? "translateX(-100vw)" : "translateX(0vw)";
+
+        // Chaque page a son propre groupe de 2 points ; on active celui qui correspond à la page affichée
+        document.querySelectorAll('.swipe-dots').forEach(group => {
+            const dots = group.querySelectorAll('.dot');
+            dots.forEach((dot, idx) => dot.classList.toggle('active', idx === pageIndex));
+        });
+
+        if (pageIndex === 1) {
+            refreshHistoryCheckboxes();
+            updateAnalysis();
+        } else {
+            updateUI();
+        }
+    }
 
     window.addEventListener('touchstart', (e) => { startX = e.touches[0].clientX; isTracking = true; }, { passive: true });
     window.addEventListener('touchmove', (e) => { if (!isTracking) return; currentX = e.touches[0].clientX; }, { passive: true });
@@ -429,26 +518,170 @@
         let deltaX = startX - currentX;
         if (Math.abs(deltaX) > 60 && currentX !== 0) {
             if (deltaX > 0 && currentViewIndex === 0) {
-                currentViewIndex = 1;
-                swiperContainer.style.transform = "translateX(-100vw)";
-                refreshHistoryCheckboxes(); 
-                updateAnalysis();
+                goToPage(1);
             } else if (deltaX < 0 && currentViewIndex === 1) {
-                currentViewIndex = 0;
-                swiperContainer.style.transform = "translateX(0vw)";
-                updateUI();
+                goToPage(0);
             }
         }
         startX = 0; currentX = 0;
     });
 
-    // --- STOCKAGE LOCAL IMPÉRATIF UNIQUE ---
-    function loadDataLocal() {
-        appData = JSON.parse(localStorage.getItem('budget_app_data_local')) || {};
+    // ==============================================================
+    // AUTHENTIFICATION (email + mot de passe, via Supabase)
+    // ==============================================================
+    function showAuthError(msg) {
+        const err = document.getElementById('auth-error');
+        const info = document.getElementById('auth-info');
+        if (info) info.style.display = 'none';
+        if (err) { err.innerText = msg; err.style.display = 'block'; }
     }
 
-    function saveDataLocal() {
-        localStorage.setItem('budget_app_data_local', JSON.stringify(appData));
+    function showAuthInfo(msg) {
+        const err = document.getElementById('auth-error');
+        const info = document.getElementById('auth-info');
+        if (err) err.style.display = 'none';
+        if (info) { info.innerText = msg; info.style.display = 'block'; }
+    }
+
+    function translateAuthError(msg) {
+        if (/Invalid login credentials/i.test(msg)) return "E-mail ou mot de passe incorrect.";
+        if (/User already registered/i.test(msg)) return "Un compte existe déjà avec cet e-mail.";
+        if (/Email not confirmed/i.test(msg)) return "Merci de confirmer ton e-mail avant de te connecter (vérifie ta boîte mail).";
+        if (/Password should be/i.test(msg)) return "Le mot de passe doit contenir au moins 6 caractères.";
+        if (/Unable to validate email/i.test(msg)) return "Adresse e-mail invalide.";
+        return msg;
+    }
+
+    async function handleSignIn() {
+        const email = (document.getElementById('auth-email').value || '').trim();
+        const password = document.getElementById('auth-password').value || '';
+        if (!email || !password) { showAuthError("Merci de renseigner ton e-mail et ton mot de passe."); return; }
+
+        const btn = document.getElementById('auth-signin-btn');
+        if (btn) btn.innerText = "Connexion...";
+        const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+        if (btn) btn.innerText = "Se connecter";
+
+        if (error) { showAuthError(translateAuthError(error.message)); return; }
+    }
+
+    async function handleSignUp() {
+        const email = (document.getElementById('auth-email').value || '').trim();
+        const password = document.getElementById('auth-password').value || '';
+        if (!email || !password) { showAuthError("Merci de renseigner ton e-mail et ton mot de passe."); return; }
+        if (password.length < 6) { showAuthError("Le mot de passe doit contenir au moins 6 caractères."); return; }
+
+        const btn = document.getElementById('auth-signup-btn');
+        if (btn) btn.innerText = "Création...";
+        const { data, error } = await supabaseClient.auth.signUp({ email, password });
+        if (btn) btn.innerText = "Créer un compte";
+
+        if (error) { showAuthError(translateAuthError(error.message)); return; }
+        if (data && data.session) return; // Confirmation e-mail désactivée : connexion immédiate
+
+        showAuthInfo("✅ Compte créé ! Vérifie ta boîte mail pour confirmer ton adresse, puis connecte-toi.");
+    }
+
+    async function handleForgotPassword() {
+        const email = (document.getElementById('auth-email').value || '').trim();
+        if (!email) { showAuthError("Renseigne ton e-mail ci-dessus puis reclique sur ce lien."); return; }
+        const { error } = await supabaseClient.auth.resetPasswordForEmail(email);
+        if (error) { showAuthError(translateAuthError(error.message)); return; }
+        showAuthInfo("📧 Un e-mail de réinitialisation vient de t'être envoyé.");
+    }
+
+    async function handleSignOut() {
+        if (!confirm("Te déconnecter ?")) return;
+        await supabaseClient.auth.signOut();
+    }
+
+    function showAuthScreen() {
+        document.getElementById('auth-screen').style.display = 'flex';
+        document.getElementById('app-root').style.display = 'none';
+        document.getElementById('splash-screen').style.display = 'none';
+        document.getElementById('splash-screen').style.opacity = '1';
+    }
+
+    async function enterApp() {
+        document.getElementById('auth-screen').style.display = 'none';
+        document.getElementById('app-root').style.display = 'block';
+        const splash = document.getElementById('splash-screen');
+        splash.style.display = 'flex';
+        splash.style.opacity = '1';
+
+        document.getElementById('current-month-input').value = selectedMonthId;
+        const emailLabel = document.getElementById('user-email-label');
+        if (emailLabel) emailLabel.innerText = currentUser.email || '';
+
+        document.getElementById('splash-status').innerText = "Synchronisation...";
+        try {
+            await loadAllFromCloud();
+        } catch (e) {
+            console.error(e);
+        }
+
+        initCategorySelect();
+        renderCategoryBudgetSettings();
+        updateUI();
+
+        document.getElementById('splash-status').innerText = "Prêt !";
+        setTimeout(() => {
+            splash.style.opacity = '0';
+            setTimeout(() => splash.style.display = 'none', 500);
+        }, 500);
+    }
+
+    supabaseClient.auth.onAuthStateChange((event, session) => {
+        if (session && session.user) {
+            currentUser = session.user;
+            if (!appEntered) {
+                appEntered = true;
+                enterApp();
+            }
+        } else if (event === 'SIGNED_OUT') {
+            appEntered = false;
+            currentUser = null;
+            appData = {};
+            CATEGORIES = BASE_CATEGORIES.map(c => ({ ...c }));
+            categoryPrefsCache = null;
+            showAuthScreen();
+        }
+    });
+
+    // ==============================================================
+    // CHARGEMENT DE TOUTES LES DONNÉES DEPUIS LE CLOUD (à la connexion)
+    // ==============================================================
+    async function loadAllFromCloud() {
+        appData = {};
+        CATEGORIES = BASE_CATEGORIES.map(c => ({ ...c }));
+
+        const [budgetsRes, catBudgetsRes, expensesRes, customCatsRes, prefsRes, settingsRes] = await Promise.all([
+            supabaseClient.from('month_budgets').select('*'),
+            supabaseClient.from('category_budgets').select('*'),
+            supabaseClient.from('expenses').select('*').order('created_at', { ascending: true }),
+            supabaseClient.from('custom_categories').select('*'),
+            supabaseClient.from('category_prefs').select('*').maybeSingle(),
+            supabaseClient.from('user_settings').select('*').maybeSingle()
+        ]);
+
+        (budgetsRes.data || []).forEach(row => { getMonthData(row.month_id).budget = parseFloat(row.budget) || 0; });
+
+        (customCatsRes.data || []).forEach(row => {
+            if (!CATEGORIES.find(c => c.value === row.value)) CATEGORIES.push({ value: row.value, label: row.label, custom: true });
+        });
+
+        (catBudgetsRes.data || []).forEach(row => { getMonthData(row.month_id).categoryBudgets[row.category] = parseFloat(row.limit_amount) || 0; });
+
+        (expensesRes.data || []).forEach(row => {
+            getMonthData(row.month_id).items.push({ id: row.id, name: row.name, price: parseFloat(row.price), category: row.category, createdAt: row.created_at });
+        });
+
+        categoryPrefsCache = (prefsRes.data && Array.isArray(prefsRes.data.prefs)) ? prefsRes.data.prefs : null;
+
+        const darkEnabled = settingsRes.data ? !!settingsRes.data.dark_mode : false;
+        document.body.classList.toggle('dark-mode', darkEnabled);
+        const toggle = document.getElementById('dark-mode-toggle');
+        if (toggle) toggle.checked = darkEnabled;
     }
 
     function initCategorySelect() {
@@ -458,25 +691,23 @@
         if(select) select.innerHTML = list.map(cat => `<option value="${cat.value}">${cat.label}</option>`).join('');
     }
 
-    // --- CATÉGORIES FAVORITES : ORDRE & VISIBILITÉ PERSONNALISÉS ---
+    // --- CATÉGORIES FAVORITES : ORDRE & VISIBILITÉ PERSONNALISÉS (en ligne) ---
     function getCategoryPrefs() {
-        let prefs = null;
-        try { prefs = JSON.parse(localStorage.getItem('budget_app_category_prefs')); } catch(e) { prefs = null; }
-        if (!Array.isArray(prefs)) prefs = [];
-
-        // Garde uniquement les préférences pour des catégories qui existent toujours
+        let prefs = Array.isArray(categoryPrefsCache) ? categoryPrefsCache.slice() : [];
         prefs = prefs.filter(p => CATEGORIES.find(c => c.value === p.value));
-
-        // Ajoute les catégories manquantes (nouvelles ou jamais configurées) à la suite
         CATEGORIES.forEach(c => {
             if (!prefs.find(p => p.value === c.value)) prefs.push({ value: c.value, visible: true });
         });
-
         return prefs;
     }
 
-    function saveCategoryPrefs(prefs) {
-        localStorage.setItem('budget_app_category_prefs', JSON.stringify(prefs));
+    async function saveCategoryPrefs(prefs) {
+        categoryPrefsCache = prefs;
+        if (!currentUser) return;
+        await supabaseClient.from('category_prefs').upsert(
+            { user_id: currentUser.id, prefs, updated_at: new Date().toISOString() },
+            { onConflict: 'user_id' }
+        );
     }
 
     function getOrderedCategories(onlyVisible) {
@@ -546,24 +777,8 @@
         renderCategoriesManageList();
     }
 
-    // --- CATÉGORIES PERSONNALISÉES (créées par l'utilisateur) ---
-    function loadCustomCategories() {
-        let custom = [];
-        try { custom = JSON.parse(localStorage.getItem('budget_app_custom_categories')) || []; } catch(e) { custom = []; }
-        if (!Array.isArray(custom)) custom = [];
-        custom.forEach(c => {
-            if (c && c.value && !CATEGORIES.find(cat => cat.value === c.value)) {
-                CATEGORIES.push({ value: c.value, label: c.label || c.value, custom: true });
-            }
-        });
-    }
-
-    function saveCustomCategories() {
-        const custom = CATEGORIES.filter(c => c.custom).map(c => ({ value: c.value, label: c.label }));
-        localStorage.setItem('budget_app_custom_categories', JSON.stringify(custom));
-    }
-
-    function addCustomCategory() {
+    // --- CATÉGORIES PERSONNALISÉES (créées par l'utilisateur, en ligne) ---
+    async function addCustomCategory() {
         const nameEl = document.getElementById('new-cat-name');
         const iconEl = document.getElementById('new-cat-icon');
         const name = nameEl ? nameEl.value.trim() : '';
@@ -575,8 +790,11 @@
         if (exists) { alert("Cette catégorie existe déjà."); return; }
 
         const label = icon ? `${icon} ${name}` : `🏷️ ${name}`;
+
+        const { error } = await supabaseClient.from('custom_categories').insert({ user_id: currentUser.id, value: name, label });
+        if (error) { alert("Erreur lors de la création de la catégorie : " + error.message); return; }
+
         CATEGORIES.push({ value: name, label: label, custom: true });
-        saveCustomCategories();
 
         if(nameEl) nameEl.value = '';
         if(iconEl) iconEl.value = '';
@@ -584,13 +802,13 @@
         renderCategoriesManageList();
     }
 
-    function deleteCustomCategory(value) {
+    async function deleteCustomCategory(value) {
         const cat = CATEGORIES.find(c => c.value === value && c.custom);
         if (!cat) return;
         if (!confirm(`Supprimer la catégorie "${cat.label}" ? Les dépenses déjà enregistrées avec cette catégorie resteront visibles mais ne seront plus regroupées avec une jauge dédiée.`)) return;
 
         CATEGORIES = CATEGORIES.filter(c => c.value !== value);
-        saveCustomCategories();
+        await supabaseClient.from('custom_categories').delete().eq('user_id', currentUser.id).eq('value', value);
 
         let prefs = getCategoryPrefs();
         prefs = prefs.filter(p => p.value !== value);
@@ -638,14 +856,30 @@
         }
     }
 
-    function saveCategoryBudgets() {
+    async function saveCategoryBudgets() {
         const data = getMonthData(selectedMonthId);
+        const toUpsert = [];
+        const toDelete = [];
+
         document.querySelectorAll('.cat-budget-input').forEach(input => {
             const cat = input.getAttribute('data-cat');
             const val = parseFloat(input.value);
-            if(!isNaN(val) && val > 0) data.categoryBudgets[cat] = val; else delete data.categoryBudgets[cat];
+            if(!isNaN(val) && val > 0) {
+                data.categoryBudgets[cat] = val;
+                toUpsert.push({ user_id: currentUser.id, month_id: selectedMonthId, category: cat, limit_amount: val, updated_at: new Date().toISOString() });
+            } else {
+                delete data.categoryBudgets[cat];
+                toDelete.push(cat);
+            }
         });
-        saveDataLocal(); updateUI();
+        updateUI();
+
+        if (toUpsert.length > 0) {
+            await supabaseClient.from('category_budgets').upsert(toUpsert, { onConflict: 'user_id,month_id,category' });
+        }
+        if (toDelete.length > 0) {
+            await supabaseClient.from('category_budgets').delete().eq('user_id', currentUser.id).eq('month_id', selectedMonthId).in('category', toDelete);
+        }
     }
 
     function changeCurrentMonth() {
@@ -746,14 +980,20 @@
         } catch(e) { console.error(e); }
     }
 
-    function setBudget() {
+    async function setBudget() {
         const ibEl = document.getElementById('initial-budget');
-        getMonthData(selectedMonthId).budget = ibEl ? (parseFloat(ibEl.value) || 0) : 0;
-        saveDataLocal(); calculateDispatchRemaining(); updateUI();
+        const budget = ibEl ? (parseFloat(ibEl.value) || 0) : 0;
+        getMonthData(selectedMonthId).budget = budget;
+        calculateDispatchRemaining(); updateUI();
+
+        await supabaseClient.from('month_budgets').upsert(
+            { user_id: currentUser.id, month_id: selectedMonthId, budget, updated_at: new Date().toISOString() },
+            { onConflict: 'user_id,month_id' }
+        );
     }
 
-    // --- CRÉATION DE TRANSACTIONS ---
-    function addItem() {
+    // --- CRÉATION / SUPPRESSION DE TRANSACTIONS (en ligne) ---
+    async function addItem() {
         const nameEl = document.getElementById('item-name');
         const priceEl = document.getElementById('item-price');
         const catEl = document.getElementById('item-category');
@@ -763,19 +1003,30 @@
         const category = catEl ? catEl.value : CATEGORIES[0].value;
         if (isNaN(price) || price <= 0) return;
 
-        getMonthData(selectedMonthId).items.push({ name, price, category, createdAt: new Date().toISOString() });
+        const createdAt = new Date().toISOString();
+        const { data, error } = await supabaseClient.from('expenses')
+            .insert({ user_id: currentUser.id, month_id: selectedMonthId, name, price, category, created_at: createdAt })
+            .select().single();
+
+        if (error) { alert("Erreur lors de l'ajout de la dépense : " + error.message); return; }
+
+        getMonthData(selectedMonthId).items.push({ id: data.id, name, price, category, createdAt });
         if(nameEl) nameEl.value = ''; if(priceEl) priceEl.value = '';
-        saveDataLocal(); updateUI();
+        updateUI();
     }
 
-    function removeItem(index) {
+    async function removeItem(index) {
         const data = getMonthData(selectedMonthId);
         const item = data.items[index];
         const label = item ? `"${item.name}" (${item.price.toFixed(2)} €)` : "cette dépense";
         if (!confirm(`Supprimer ${label} ? Cette action est irréversible.`)) return;
 
         data.items.splice(index, 1);
-        saveDataLocal(); updateUI();
+        updateUI();
+
+        if (item && item.id) {
+            await supabaseClient.from('expenses').delete().eq('id', item.id);
+        }
     }
 
     function refreshHistoryCheckboxes() {
@@ -857,7 +1108,7 @@
         let htmlContent = `
             <div style="padding: 25px; font-family: Helvetica, Arial, sans-serif; color: #2c3e50; background: white;">
                 <h1 style="text-align: center; font-size: 20px; margin-bottom: 5px; color: #1a252f; text-transform: uppercase; letter-spacing: 1px;">Rapport de Sauvegarde Budgétaire</h1>
-                <p style="text-align: center; font-size: 11px; color: #7f8c8d; margin-bottom: 25px;">Exporté localement le ${new Date().toLocaleDateString('fr-FR')}</p>
+                <p style="text-align: center; font-size: 11px; color: #7f8c8d; margin-bottom: 25px;">Exporté le ${new Date().toLocaleDateString('fr-FR')}</p>
         `;
 
         selectedMonths.forEach((mId, idx) => {
@@ -940,29 +1191,25 @@
             jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
         };
 
-        // Génération locale et téléchargement transparent
         html2pdf().set(opt).from(template.innerHTML).save().then(() => {
             closePdfModal();
             template.innerHTML = ''; 
         });
     }
 
-    // --- MODE SOMBRE ---
-    function toggleDarkMode() {
+    // --- MODE SOMBRE (préférence liée au compte) ---
+    async function toggleDarkMode() {
         const toggle = document.getElementById('dark-mode-toggle');
         const enabled = toggle ? toggle.checked : false;
         document.body.classList.toggle('dark-mode', enabled);
-        localStorage.setItem('budget_app_dark_mode', enabled ? 'true' : 'false');
+        if (!currentUser) return;
+        await supabaseClient.from('user_settings').upsert(
+            { user_id: currentUser.id, dark_mode: enabled, updated_at: new Date().toISOString() },
+            { onConflict: 'user_id' }
+        );
     }
 
-    function loadDarkModePref() {
-        const enabled = localStorage.getItem('budget_app_dark_mode') === 'true';
-        document.body.classList.toggle('dark-mode', enabled);
-        const toggle = document.getElementById('dark-mode-toggle');
-        if(toggle) toggle.checked = enabled;
-    }
-
-    // --- EXPORT / IMPORT CSV (SAUVEGARDE MANUELLE DES DONNÉES) ---
+    // --- EXPORT / IMPORT CSV (SAUVEGARDE MANUELLE, EN PLUS DU CLOUD) ---
     function csvEscapeValue(val) {
         val = (val === undefined || val === null) ? '' : String(val);
         if (val.indexOf(';') !== -1 || val.indexOf('"') !== -1 || val.indexOf('\n') !== -1) {
@@ -1030,7 +1277,8 @@
         if (!file) return;
 
         const reader = new FileReader();
-        reader.onload = function(e) {
+        reader.onload = async function(e) {
+            const splash = document.getElementById('splash-screen');
             try {
                 let text = e.target.result;
                 if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
@@ -1065,36 +1313,66 @@
                             name: label || "Dépense",
                             price: parseFloat(value) || 0,
                             category: category || CATEGORIES[0].value,
-                            createdAt: dateVal || null
+                            createdAt: dateVal || new Date().toISOString()
                         });
                     }
                 }
 
-                const confirmMsg = "⚠️ Importer ce fichier va REMPLACER toutes les données actuelles de l'application. Continuer ?";
+                const confirmMsg = "⚠️ Importer ce fichier va REMPLACER toutes les données de ton compte en ligne. Continuer ?";
                 if (!confirm(confirmMsg)) {
                     event.target.value = '';
                     return;
                 }
 
-                appData = newData;
-                saveDataLocal();
+                splash.style.display = 'flex';
+                splash.style.opacity = '1';
+                document.getElementById('splash-status').innerText = "Import en cours...";
 
-                newCustomCats.forEach(c => {
-                    if (!CATEGORIES.find(cat => cat.value === c.value)) {
-                        CATEGORIES.push({ value: c.value, label: c.label, custom: true });
-                    }
+                // Purge des données existantes dans le cloud
+                await Promise.all([
+                    supabaseClient.from('expenses').delete().eq('user_id', currentUser.id),
+                    supabaseClient.from('month_budgets').delete().eq('user_id', currentUser.id),
+                    supabaseClient.from('category_budgets').delete().eq('user_id', currentUser.id),
+                    supabaseClient.from('custom_categories').delete().eq('user_id', currentUser.id)
+                ]);
+
+                // Recréation des catégories personnalisées
+                for (const c of newCustomCats) {
+                    await supabaseClient.from('custom_categories').insert({ user_id: currentUser.id, value: c.value, label: c.label });
+                }
+
+                // Recréation des budgets, budgets par famille et dépenses
+                const monthRows = [], catBudgetRows = [], itemRows = [];
+                Object.keys(newData).forEach(mId => {
+                    const d = newData[mId];
+                    monthRows.push({ user_id: currentUser.id, month_id: mId, budget: d.budget || 0 });
+                    Object.keys(d.categoryBudgets || {}).forEach(cat => {
+                        catBudgetRows.push({ user_id: currentUser.id, month_id: mId, category: cat, limit_amount: d.categoryBudgets[cat] });
+                    });
+                    (d.items || []).forEach(it => {
+                        itemRows.push({ user_id: currentUser.id, month_id: mId, name: it.name, price: it.price, category: it.category, created_at: it.createdAt });
+                    });
                 });
-                saveCustomCategories();
 
+                if (monthRows.length > 0) await supabaseClient.from('month_budgets').insert(monthRows);
+                if (catBudgetRows.length > 0) await supabaseClient.from('category_budgets').insert(catBudgetRows);
+                if (itemRows.length > 0) await supabaseClient.from('expenses').insert(itemRows);
+
+                await loadAllFromCloud();
                 initCategorySelect();
                 renderCategoryBudgetSettings();
                 updateUI();
                 refreshHistoryCheckboxes();
                 updateAnalysis();
+
+                splash.style.opacity = '0';
+                setTimeout(() => splash.style.display = 'none', 500);
+
                 alert("✅ Import réussi !");
             } catch (err) {
                 console.error(err);
                 alert("❌ Erreur lors de la lecture du fichier CSV.");
+                if (splash) splash.style.display = 'none';
             } finally {
                 event.target.value = '';
             }
@@ -1102,32 +1380,28 @@
         reader.readAsText(file, 'UTF-8');
     }
 
-    function clearAllData() {
-        if(confirm("⚠️ Supprimer définitivement toutes les données de l'appareil ? Cette action est irréversible.")) {
-            localStorage.removeItem('budget_app_data_local');
-            appData = {};
-            location.reload();
-        }
-    }
+    async function clearAllData() {
+        if(!confirm("⚠️ Supprimer définitivement TOUTES tes données (dépenses, budgets, catégories perso) de ton compte en ligne ? Cette action est irréversible.")) return;
 
-    function startApp() {
-        document.getElementById('current-month-input').value = selectedMonthId;
-        loadCustomCategories();
-        initCategorySelect(); 
-        loadDataLocal();
-        loadDarkModePref();
-        renderCategoryBudgetSettings(); 
+        await Promise.all([
+            supabaseClient.from('expenses').delete().eq('user_id', currentUser.id),
+            supabaseClient.from('month_budgets').delete().eq('user_id', currentUser.id),
+            supabaseClient.from('category_budgets').delete().eq('user_id', currentUser.id),
+            supabaseClient.from('custom_categories').delete().eq('user_id', currentUser.id),
+            supabaseClient.from('category_prefs').delete().eq('user_id', currentUser.id)
+        ]);
+
+        appData = {};
+        CATEGORIES = BASE_CATEGORIES.map(c => ({ ...c }));
+        categoryPrefsCache = null;
+
+        initCategorySelect();
+        renderCategoryBudgetSettings();
         updateUI();
-        
-        document.getElementById('splash-status').innerText = "Prêt !";
-        
-        setTimeout(() => {
-            const s = document.getElementById('splash-screen');
-            if(s) { s.style.opacity = '0'; setTimeout(() => s.style.display = 'none', 500); }
-        }, 1300);
+        refreshHistoryCheckboxes();
+        updateAnalysis();
+        alert("Toutes tes données ont été supprimées.");
     }
-
-    window.addEventListener('DOMContentLoaded', startApp);
 </script>
 </body>
-                    </html>
+</html>
